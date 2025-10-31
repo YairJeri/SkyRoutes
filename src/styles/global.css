@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+
+  --animate-dropdown-in: dropdown-in 0.3s ease-out forwards;
+
+  --animate-dropdown-out: dropdown-out 0.2s ease-in forwards;
+
+  --animate-dropdown-class: dropdown-in 1s ease-out forwards;
+
+  @keyframes dropdown-in {
+    0% {
+      /* opacity: 0; */
+      max-height: 0;
+    }
+    100% {
+      /* opacity: 100; */
+      max-height: 350px; 
+    }
+  }
+
+  @keyframes dropdown-out {
+     0% {
+      /* opacity: 100; */
+      max-height: 400px;
+    }
+    100% {
+      /* opacity: 0; */
+      max-height: 0;
+    }
+  }
+
+}

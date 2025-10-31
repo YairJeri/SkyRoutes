@@ -1,0 +1,190 @@
+---
+import "../styles/global.css";
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width" />
+		<title>SkyRoutes</title>
+	</head>
+	<body class="bg-gray-100">
+		<div
+			id="loadingOverlay"
+			class="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50"
+		>
+			<svg
+				class="animate-spin h-16 w-16 text-white mb-4"
+				xmlns="http://www.w3.org/2000/svg"
+				fill="none"
+				viewBox="0 0 24 24"
+			>
+				<circle
+					class="opacity-25"
+					cx="12"
+					cy="12"
+					r="10"
+					stroke="currentColor"
+					stroke-width="4"></circle>
+				<path
+					class="opacity-75"
+					fill="currentColor"
+					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+				></path>
+			</svg>
+			<h1 class="text-white text-2xl font-bold mb-2">
+				Loading neccessary data...
+			</h1>
+			<p class="text-gray-200 text-center max-w-xs">
+				This may take a few seconds. Please do not close this window.
+			</p>
+		</div>
+	</body>
+	<script type="module">
+		import Dexie from "https://cdn.jsdelivr.net/npm/dexie@4.0.2/dist/dexie.mjs";
+		const db = new Dexie("SkyRoutes");
+		db.version(1).stores({
+			airports: "id, name, city, country, lat, lng",
+			routes: "++id, id_origin, id_destination, distance",
+		});
+
+		const numAirports = 7698;
+		const numRoutes = 18966;
+
+		const DATA_URL =
+			"https://raw.githubusercontent.com/YairJeri/SkyRoutes/refs/heads/data/data";
+		const AIRPORTS_URL = `${DATA_URL}/airports.dat`;
+		const ROUTES_URL = `${DATA_URL}/routes.dat`;
+
+		async function clearDB() {
+			await db.airports.clear();
+			await db.routes.clear();
+		}
+
+		async function checkDB() {
+			const countAirports = await db.airports.count();
+			const countRoutes = await db.routes.count();
+			if (countAirports !== numAirports || countRoutes !== numRoutes) {
+				await clearDB();
+				await loadData();
+			}
+			window.location.href = "/application";
+		}
+		async function fetchData(url) {
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`Error al cargar ${url}`);
+			return res.text();
+		}
+
+		function parseCSVLine(line) {
+			if (!line || line.trim() === "") return [];
+			const regex = /("([^"]|"")*"|[^,]*)(,|$)/g;
+			const fields = [];
+			let match;
+			while ((match = regex.exec(line)) !== null) {
+				let value = match[1] ?? "";
+				if (value.startsWith('"') && value.endsWith('"')) {
+					value = value.slice(1, -1).replace(/""/g, '"');
+				}
+				fields.push(value.trim());
+				if (match[0].length === 0) break;
+			}
+			return fields;
+		}
+
+		function haversine(a, b) {
+			const R = 6371000;
+			const toRad = (x) => (x * Math.PI) / 180;
+			const dLat = toRad(b.lat - a.lat);
+			const dLon = toRad(b.lng - a.lng);
+			const lat1 = toRad(a.lat);
+			const lat2 = toRad(b.lat);
+
+			const h =
+				Math.sin(dLat / 2) ** 2 +
+				Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+			return 2 * R * Math.asin(Math.sqrt(h));
+		}
+
+		async function loadData() {
+			const nodes = {};
+
+			// --- Cargar aeropuertos ---
+			const airportsRes = await fetchData(AIRPORTS_URL);
+			airportsRes.split("\n").forEach((line) => {
+				const fields = parseCSVLine(line);
+				if (!fields[0]) return;
+				const id = parseInt(fields[0]);
+				const alias = fields[4]; // IATA/ICAO code
+				nodes[id] = {
+					id,
+					name: fields[1],
+					city: fields[2],
+					country: fields[3],
+					alias,
+					lat: parseFloat(fields[6]),
+					lng: parseFloat(fields[7]),
+				};
+			});
+
+			// --- Crear índice alias -> id ---
+			const aliasToId = {};
+			for (const airport of Object.values(nodes)) {
+				if (airport.alias) aliasToId[airport.alias] = airport.id;
+			}
+
+			// --- Cargar rutas ---
+			const routes = [];
+			const alreadyAdded = new Set();
+
+			const routesRes = await fetchData(ROUTES_URL);
+			routesRes.split("\n").forEach((line) => {
+				const values = line.split(",");
+				if (!values[2] || !values[4]) return; // deben tener códigos
+
+				// IDs (pueden ser "\N")
+				let id_origin =
+					values[3] !== "\\N"
+						? parseInt(values[3])
+						: aliasToId[values[2]];
+				let id_destination =
+					values[5] !== "\\N"
+						? parseInt(values[5])
+						: aliasToId[values[4]];
+
+				// si no se encuentran en ningún caso, descartar
+				if (!id_origin || !id_destination) return;
+				if (!nodes[id_origin] || !nodes[id_destination]) return;
+
+				// evitar duplicados (rutas bidireccionales)
+				const min = Math.min(id_origin, id_destination);
+				const max = Math.max(id_origin, id_destination);
+				const key = `${min}-${max}`;
+				if (alreadyAdded.has(key)) return;
+				alreadyAdded.add(key);
+
+				// calcular distancia
+				const distance = haversine(
+					nodes[id_origin],
+					nodes[id_destination],
+				);
+
+				routes.push({
+					id_origin,
+					id_destination,
+					distance,
+				});
+			});
+
+			// --- Guardar en Dexie ---
+			await db.transaction("rw", db.airports, db.routes, async () => {
+				await db.airports.bulkAdd(Object.values(nodes));
+				await db.routes.bulkAdd(routes);
+			});
+		}
+
+		checkDB();
+		// cargarDatos();
+	</script>
+</html>

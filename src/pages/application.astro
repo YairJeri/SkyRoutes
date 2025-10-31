@@ -1,0 +1,37 @@
+---
+import "../styles/global.css";
+import App from "../components/App.jsx";
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="viewport" content="width=device-width" />
+        <title>SkyRoutes</title>
+    </head>
+    <body>
+        <div class="h-dvh w-full">
+            <App client:only />
+        </div>
+    </body>
+    <script type="module">
+        import Dexie from "https://cdn.jsdelivr.net/npm/dexie@4.0.2/dist/dexie.mjs";
+        const db = new Dexie("SkyRoutes");
+        db.version(1).stores({
+            airports: "id, name, city, country, lat, lng",
+            routes: "++id, id_origin, id_destination, distance",
+        });
+
+        const numAirports = 7698;
+        const numRoutes = 18966;
+
+        async function checkDB() {
+            const countAirports = await db.airports.count();
+            const countRoutes = await db.routes.count();
+            if (countAirports !== numAirports || countRoutes !== numRoutes) {
+                window.location.href = "/";
+            }
+        }
+    </script>
+</html>
