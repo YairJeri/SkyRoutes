@@ -1,8 +1,8 @@
-# Flight Route Optimizer
+# SkyRoutes
 
-Flight Route Optimizer is a web application that allows users to find the shortest flights between an origin and a destination. The app also provides the flexibility to add stopovers or avoid specific airports, making it easier to plan efficient and personalized flight routes.
+SkyRoutes is a web application that allows users to find the shortest flights between an origin and a destination. The app also provides the flexibility to add stopovers or avoid specific airports, making it easier to plan efficient and personalized flight routes.
 
-**Deployed in** https://sky-routes-23rc88kl6-etsenias-projects.vercel.app
+**Deployed in** https://sky-routes-tau.vercel.app/application
 
 ## Features
 
